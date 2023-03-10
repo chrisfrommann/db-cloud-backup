@@ -4,24 +4,28 @@ function cp_to_cloud() {
 	local_dir=$1
 	file_name=$2
 
-	suffix="daily/${today}/"
+	suffix="daily/${DB_TODAY}/"
 
 	set -o pipefail
 	aws s3 cp "${local_dir}${file_name}" "${DB_CLOUD_BACKUP_PATH}${suffix}${file_name}"
 	set +o pipefail
 }
 
+export -f cp_to_cloud
+export DB_CLOUD_BACKUP_PATH
+export DB_TODAY
+
 function create_weeklies() {
 	# Get the current day of week
 	if [ "$(uname)" == "Darwin" ]; then
 		# macOS/BSD uses a different date format
-		day_of_week=$(date -j -f "%Y-%m-%d" ${today} +"%u")
+		day_of_week=$(date -j -f "%Y-%m-%d" ${DB_TODAY} +"%u")
 	else
-		day_of_week=$(date -d "${today}" +%u)
+		day_of_week=$(date -d "${DB_TODAY}" +%u)
 	fi
 	
 
-	suffix="${today}/"
+	suffix="${DB_TODAY}/"
 	src="${DB_CLOUD_BACKUP_PATH}daily/${suffix}"
 	dest="${DB_CLOUD_BACKUP_PATH}weekly/${suffix}"
 

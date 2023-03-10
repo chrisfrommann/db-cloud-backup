@@ -1,11 +1,53 @@
 #!/bin/bash
+export SHELL=$(type -p bash)
+
+function perform_table_backup() {
+    set -euo pipefail
+
+    full_db_staging_dir=$1
+    database=$2
+    process=$3
+
+    if [ "${DB_ENABLE_PLAIN_BACKUPS}" = "yes" ]
+    then
+        echo "Plain backup of $database (process ${process})"
+
+        set -o pipefail
+        if ! pg_dump -Fp -h "$DB_HOSTNAME" -U "$DB_USERNAME" "$database" | gzip > $full_db_staging_dir"$database".sql.gz.in_progress; then
+            echo "${RED}[!!ERROR!!] Failed to produce plain backup database ${database}${NO_COLOR}" 1>&2
+        else
+            mv $full_db_staging_dir"$database".sql.gz.in_progress $full_db_staging_dir"$database".sql.gz
+            cp_to_cloud $full_db_staging_dir "${database}.sql.gz"
+        fi
+        set +o pipefail
+                    
+    fi
+
+    if [ $DB_ENABLE_CUSTOM_BACKUPS = "yes" ]
+    then
+        echo "Custom backup of $database (process ${process})"
+
+        if ! pg_dump -Fc -h "$DB_HOSTNAME" -U "$DB_USERNAME" "$database" -f $full_db_staging_dir"$database".custom.in_progress; then
+            echo "${RED}[!!ERROR!!] Failed to produce custom backup database ${database}${NO_COLOR}"
+        else
+            mv $full_db_staging_dir"$database".custom.in_progress $full_db_staging_dir"$database".custom
+            cp_to_cloud $full_db_staging_dir "${database}.custom"
+        fi
+    fi
+}
+
+export -f perform_table_backup
+export DB_ENABLE_PLAIN_BACKUPS
+export DB_ENABLE_CUSTOM_BACKUPS
+export DB_HOSTNAME
+export DB_USERNAME
 
 function perform_backups() {
 	###########################
 	#### START THE BACKUPS ####
 	###########################
 
-	suffix="${today}/"
+	suffix="${DB_TODAY}/"
 	full_db_staging_dir="${DB_STAGING_DIR}${suffix}"
 
 	echo "Making backup directory in $full_db_staging_dir"
@@ -57,36 +99,10 @@ function perform_backups() {
 		echo -e "${GREEN}${BOLD}\n\nPerforming full backups"
 		echo -e "--------------------------------------------\n${NORMAL}${NO_COLOR}"
 
-		for database in `psql -h "$DB_HOSTNAME" -U "$DB_USERNAME" -At -c "$full_backup_query" postgres`
-		do
-			if [ $DB_ENABLE_PLAIN_BACKUPS = "yes" ]
-			then
-				echo "Plain backup of $database"
-		
-				set -o pipefail
-				if ! pg_dump -Fp -h "$DB_HOSTNAME" -U "$DB_USERNAME" "$database" | gzip > $full_db_staging_dir"$database".sql.gz.in_progress; then
-					echo "${RED}[!!ERROR!!] Failed to produce plain backup database ${database}${NO_COLOR}" 1>&2
-				else
-					mv $full_db_staging_dir"$database".sql.gz.in_progress $full_db_staging_dir"$database".sql.gz
-					cp_to_cloud $full_db_staging_dir "${database}.sql.gz"
-				fi
-				set +o pipefail
-							
-			fi
+        databases=$(psql -h "$DB_HOSTNAME" -U "$DB_USERNAME" -At -c "$full_backup_query" postgres)
+        # Backup using GNU Parallel
+        printf '%s\n' $databases | parallel -j ${PARALLEL_PROCESSES} perform_table_backup $full_db_staging_dir {} {%}
 
-			if [ $DB_ENABLE_CUSTOM_BACKUPS = "yes" ]
-			then
-				echo "Custom backup of $database"
-		
-				if ! pg_dump -Fc -h "$DB_HOSTNAME" -U "$DB_USERNAME" "$database" -f $full_db_staging_dir"$database".custom.in_progress; then
-					echo "${RED}[!!ERROR!!] Failed to produce custom backup database ${database}${NO_COLOR}"
-				else
-					mv $full_db_staging_dir"$database".custom.in_progress $full_db_staging_dir"$database".custom
-					cp_to_cloud $full_db_staging_dir "${database}.custom"
-				fi
-			fi
-
-		done
 	fi
 
 	echo -e "${GREEN}${BOLD}\nAll database backups complete! ${CELEBRATE}${NORMAL}${NO_COLOR}"

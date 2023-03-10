@@ -88,7 +88,7 @@ if [[ ${DB_DAY_OF_WEEK_TO_KEEP} > ${DB_DAYS_TO_KEEP} ]]; then
 fi
 
 # Make the date a variable so you can adjust it for test purposes
-today=`date +\%Y-\%m-\%d`
+DB_TODAY=`date +\%Y-\%m-\%d`
 
 # Create today's backup and move it to the cloud
 perform_backups

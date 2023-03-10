@@ -29,6 +29,9 @@ DB_ENABLE_PLAIN_BACKUPS=yes
 # Will produce gzipped sql file containing the cluster globals, like users and passwords, if set to "yes"
 DB_ENABLE_GLOBALS_BACKUPS=yes
 
+# Number of simultaneously/parallel processes
+PARALLEL_PROCESSES=4
+
 
 #### SETTINGS FOR ROTATED BACKUPS ####
 
