@@ -10,7 +10,14 @@
 #                                                                      #
 ########################################################################
 
+# See https://gist.github.com/mohanpedala/1e2ff5661761d3abd0385e8223e16425
 set -euo pipefail
+
+# You need to run shellcheck -x to follow links (see SC1090 and SC1091)
+# shellcheck source=./_includes.sh
+. "$(dirname "$0")/_includes.sh"
+. "$(dirname "$0")/_cloud.sh"
+. "$(dirname "$0")/_database.sh"
 
 print_usage() {
     cat <<-EOF
@@ -51,16 +58,6 @@ while [[ $# -gt 0 ]]; do
                     exit 1
             fi
             ;;
-        # -d)
-	    #     shift
-	    #     if test $# -gt 0; then
-		#         db_type="${1}"
-	    #     else
-		#         echo "No DB type specified"
-		#         exit 1
-	    #     fi
-	    #     shift
-	    #     ;;
         *)
             ${ECHO} "Unknown Option \"$1\"" 1>&2
             print_usage
@@ -76,135 +73,31 @@ if [ "$DB_BACKUP_USER" != "" -a "$(id -un)" != "$DB_BACKUP_USER" ]; then
 fi;
 
 # Ensure the backup directory exists
-mkdir -p $DB_BACKUP_DIR
+mkdir -p $DB_STAGING_DIR
 
 # Ensure DB_TYPE is one of oracle or postgres
-if [ "{$DB_TYPE}" != 'postgres' ] && [ "${DB_TYPE}" != 'oracle' ]; then
+if [ "${DB_TYPE}" != 'postgres' ] && [ "${DB_TYPE}" != 'oracle' ]; then
     echo "DB_TYPE must by 'postgres' or 'oracle'" 1>&2
 	exit 1;
 fi
 
-###########################
-#### START THE BACKUPS ####
-###########################
-
-function perform_backups() {
-	suffix=$1
-	full_db_backup_dir=$DB_BACKUP_DIR"`date +\%Y-\%m-\%d`$suffix/"
-
-	echo "Making backup directory in $full_db_backup_dir"
-
-	if ! mkdir -p $full_db_backup_dir; then
-		echo "Cannot create backup directory in $full_db_backup_dir. Go and fix it!" 1>&2
-		exit 1;
-	fi;
-
-	if [ "${DB_TYPE}" = "oracle" ]; then
-
-		echo -e "\n\nPerforming full backups"
-		echo -e "--------------------------------------------\n"
-
-		# TODO
-		
-	elif [ "${DB_TYPE}" = "postgresql" ]; then
-	
-		#######################
-		### GLOBALS BACKUPS ###
-		#######################
-
-		echo -e "\n\nPerforming globals backup"
-		echo -e "--------------------------------------------\n"
-
-		if [ $DB_ENABLE_GLOBALS_BACKUPS = "yes" ]
-		then
-				echo "Globals backup"
-
-				set -o pipefail
-				if ! pg_dumpall -g -h "$DB_HOSTNAME" -U "$DB_USERNAME" | gzip > $full_db_backup_dir"globals".sql.gz.in_progress; then
-						echo "[!!ERROR!!] Failed to produce globals backup" 1>&2
-				else
-						mv $full_db_backup_dir"globals".sql.gz.in_progress $full_db_backup_dir"globals".sql.gz
-				fi
-				set +o pipefail
-		else
-			echo "None"
-		fi
-		
-		
-		###########################
-		###### FULL BACKUPS #######
-		###########################
-
-		full_backup_query="select datname from pg_database where not datistemplate and datallowconn order by datname;"
-
-		echo -e "\n\nPerforming full backups"
-		echo -e "--------------------------------------------\n"
-
-		for database in `psql -h "$DB_HOSTNAME" -U "$DB_USERNAME" -At -c "$full_backup_query" postgres`
-		do
-			if [ $DB_ENABLE_PLAIN_BACKUPS = "yes" ]
-			then
-				echo "Plain backup of $database"
-		
-				set -o pipefail
-				if ! pg_dump -Fp -h "$DB_HOSTNAME" -U "$DB_USERNAME" "$database" | gzip > $full_db_backup_dir"$database".sql.gz.in_progress; then
-					echo "[!!ERROR!!] Failed to produce plain backup database $database" 1>&2
-				else
-					mv $full_db_backup_dir"$database".sql.gz.in_progress $full_db_backup_dir"$database".sql.gz
-				fi
-				set +o pipefail
-							
-			fi
-
-			if [ $DB_ENABLE_CUSTOM_BACKUPS = "yes" ]
-			then
-				echo "Custom backup of $database"
-		
-				if ! pg_dump -Fc -h "$DB_HOSTNAME" -U "$DB_USERNAME" "$database" -f $full_db_backup_dir"$database".custom.in_progress; then
-					echo "[!!ERROR!!] Failed to produce custom backup database $database"
-				else
-					mv $full_db_backup_dir"$database".custom.in_progress $full_db_backup_dir"$database".custom
-				fi
-			fi
-
-		done
-	fi
-
-	echo -e "\nAll database backups complete!"
-}
-
-# MONTHLY BACKUPS
-
-day_of_month=`date +%d`
-
-if [ $day_of_month -eq 1 ];
-then
-	# Delete all expired monthly directories
-	find $DB_BACKUP_DIR -maxdepth 1 -name "*-monthly" -exec rm -rf '{}' ';'
-	        	
-	perform_backups "-monthly"
-	
-	exit 0;
+if [[ ${DB_DAY_OF_WEEK_TO_KEEP} > ${DB_DAYS_TO_KEEP} ]]; then
+	echo "DB_DAY_OF_WEEK_TO_KEEP > DB_DAYS_TO_KEEP, which means you'll have 
+	already deleted the backup you want to retain" 1>&2
+	exit 1;
 fi
 
-# WEEKLY BACKUPS
+# Make the date a variable so you can adjust it for test purposes
+today=`date +\%Y-\%m-\%d`
 
-day_of_week=`date +%u` #1-7 (Monday-Sunday)
-expired_days=`expr $((($DB_WEEKS_TO_KEEP * 7) + 1))`
+# Create today's backup and move it to the cloud
+perform_backups
 
-if [ $day_of_week = $DB_DAY_OF_WEEK_TO_KEEP ];
-then
-	# Delete all expired weekly directories
-	find $DB_BACKUP_DIR -maxdepth 1 -mtime +$expired_days -name "*-weekly" -exec rm -rf '{}' ';'
-	        	
-	perform_backups "-weekly"
-	
-	exit 0;
-fi
+# Move today's backup to be a weekly backup if it's the 'weekly' version
+create_weeklies
 
-# DAILY BACKUPS
+# Clean up old (daily) cloud backups
+rm_stale_backups "${DB_CLOUD_BACKUP_PATH}" "daily" $DB_DAYS_TO_KEEP
 
-# Delete daily backups 7 days old or more
-find $DB_BACKUP_DIR -maxdepth 1 -mtime +$DB_DAYS_TO_KEEP -name "*-daily" -exec rm -rf '{}' ';'
-
-perform_backups "-daily"
+# Clean up old (weekly) cloud backups
+rm_stale_backups "${DB_CLOUD_BACKUP_PATH}" "weekly" $(($DB_WEEKS_TO_KEEP * 7 + 1))
