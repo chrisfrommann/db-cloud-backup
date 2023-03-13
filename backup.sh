@@ -3,7 +3,7 @@
 ########################################################################
 #                                                                      #
 #   Script to automatically create rolling backups to cloud storage    #
-#      Inspired and heavily modified from                              #
+#      Inspired by and heavily modified from                           #
 #      https://wiki.postgresql.org/wiki/Automated_Backup_on_Linux      #
 #                                                                      #
 #   Author: @chrisfrommann                                             #
@@ -68,27 +68,46 @@ done
 
 # Make sure we're running as the required backup user
 if [ "$DB_BACKUP_USER" != "" -a "$(id -un)" != "$DB_BACKUP_USER" ]; then
-	echo "This script must be run as $DB_BACKUP_USER. Exiting." 1>&2
+	echo "${RED}This script must be run as $DB_BACKUP_USER. Exiting.${NO_COLOR}" 1>&2
 	exit 1;
 fi;
 
 # Ensure the backup directory exists
-mkdir -p $DB_STAGING_DIR
+mkdir -p "$DB_STAGING_DIR"
 
-# Ensure DB_TYPE is one of oracle or postgres
-if [ "${DB_TYPE}" != 'postgres' ] && [ "${DB_TYPE}" != 'oracle' ]; then
-    echo "DB_TYPE must by 'postgres' or 'oracle'" 1>&2
+echo -e "${GEAR} Checking dependencies... "
+deps=0
+for name in aws parallel
+do
+  type $name &>/dev/null || { echo -en "\n${RED_X} $name needs to be installed.";deps=1; }
+done
+[[ $deps -ne 1 ]] && echo "${GREEN_GHECK} OK" || { echo -en "${RED}\nInstall the above and rerun this script${NO_COLOR}\n";exit 1; }
+
+# Ensure DB_TYPE is one of oracle or postgres (and relevant dependencies are installed)
+if [ "${DB_TYPE}" == 'postgres' ]; then
+	if ! command pg_dump --version &> /dev/null; then
+		echo -e "${RED}pg_dump must be installed to backup PostgreSQL${NO_COLOR}" 1>&2
+		exit 1;
+	fi
+	echo "hello?"
+elif [ "${DB_TYPE}" == 'oracle' ]; then
+	if ! command expdb --version &> /dev/null; then
+		echo -e "${RED}expdb must be installed to backup Oracle${NO_COLOR}" 1>&2
+		exit 1;
+	fi
+else
+    echo -e "${RED}DB_TYPE must by 'postgres' or 'oracle'${NO_COLOR}" 1>&2
 	exit 1;
 fi
 
 if [[ ${DB_DAY_OF_WEEK_TO_KEEP} > ${DB_DAYS_TO_KEEP} ]]; then
-	echo "DB_DAY_OF_WEEK_TO_KEEP > DB_DAYS_TO_KEEP, which means you'll have 
-	already deleted the backup you want to retain" 1>&2
+	echo -e "${RED}DB_DAY_OF_WEEK_TO_KEEP > DB_DAYS_TO_KEEP, which means you'll have 
+	already deleted the backup you want to retain${NO_COLOR}" 1>&2
 	exit 1;
 fi
 
 # Make the date a variable so you can adjust it for test purposes
-DB_TODAY=`date +\%Y-\%m-\%d`
+DB_TODAY=$(date +\%Y-\%m-\%d)
 
 # Create today's backup and move it to the cloud
 perform_backups
@@ -97,7 +116,7 @@ perform_backups
 create_weeklies
 
 # Clean up old (daily) cloud backups
-rm_stale_backups "${DB_CLOUD_BACKUP_PATH}" "daily" $DB_DAYS_TO_KEEP
+rm_stale_backups "${DB_CLOUD_BACKUP_PATH}" "daily" "$DB_DAYS_TO_KEEP"
 
 # Clean up old (weekly) cloud backups
 rm_stale_backups "${DB_CLOUD_BACKUP_PATH}" "weekly" $(($DB_WEEKS_TO_KEEP * 7 + 1))

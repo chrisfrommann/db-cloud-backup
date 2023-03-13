@@ -21,7 +21,7 @@ DB_USERNAME=
 DB_STAGING_DIR=/home/backups/database-backup/
 
 # Will produce a custom-format backup if set to "yes"
-DB_ENABLE_CUSTOM_BACKUPS=yes
+DB_ENABLE_CUSTOM_BACKUPS=no
 
 # Will produce a gzipped plain-format backup if set to "yes"
 DB_ENABLE_PLAIN_BACKUPS=yes
