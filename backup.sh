@@ -59,7 +59,7 @@ while [[ $# -gt 0 ]]; do
             fi
             ;;
         *)
-            ${ECHO} "Unknown Option \"$1\"" 1>&2
+            echo "Unknown Option \"$1\"" 1>&2
             print_usage
             exit 2
             ;;
@@ -71,9 +71,6 @@ if [ "$DB_BACKUP_USER" != "" -a "$(id -un)" != "$DB_BACKUP_USER" ]; then
 	echo "${RED}This script must be run as $DB_BACKUP_USER. Exiting.${NO_COLOR}" 1>&2
 	exit 1;
 fi;
-
-# Ensure the backup directory exists
-mkdir -p "$DB_STAGING_DIR"
 
 echo -e "${GEAR} Checking dependencies... "
 deps=0
@@ -89,10 +86,9 @@ if [ "${DB_TYPE}" == 'postgres' ]; then
 		echo -e "${RED}pg_dump must be installed to backup PostgreSQL${NO_COLOR}" 1>&2
 		exit 1;
 	fi
-	echo "hello?"
 elif [ "${DB_TYPE}" == 'oracle' ]; then
-	if ! command expdb --version &> /dev/null; then
-		echo -e "${RED}expdb must be installed to backup Oracle${NO_COLOR}" 1>&2
+	if [ ! $(which expdp 2>/dev/null) ] || [ ! $(which sqlplus 2>/dev/null) ]; then
+		echo -e "${RED}expdp and sqlplus must be installed to backup Oracle${NO_COLOR}" 1>&2
 		exit 1;
 	fi
 else

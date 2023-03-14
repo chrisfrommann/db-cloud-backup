@@ -2,17 +2,27 @@
 export SHELL=$(type -p bash)
 
 function perform_full_oracle_backup() {
-    full_db_staging_dir=$1
+
+    # Create the appropriate directory in Oracle
+    sqlplus "${DB_USERNAME}"/"${DB_PASSWORD}"@"${DB_HOSTNAME}" <<EOF
+CREATE or REPLACE DIRECTORY cloud_dpump_dir as '${DB_STAGING_DIR}';
+GRANT READ, WRITE ON DIRECTORY cloud_dpump_dir TO ${DB_USERNAME};
+EOF
 
     # Export full database into proprietary Oracle format
     # See:
     # https://docs.oracle.com/database/121/SUTIL/GUID-1E134053-692A-4386-BB77-153CB4A6071A.htm#SUTIL887
     # https://stackoverflow.com/questions/16415120/exp-command-accepts-host-and-port-to-export-remote-db-tables
-    expdp "${DB_USERNAME}"/"${DB_PASSWORD}"@"${DB_HOSTNAME}" FULL=YES DUMPFILE="${full_db_staging_dir}":exp_full_%U.dmp \
-    FILESIZE=4G PARALLEL="${PARALLEL_PROCESSES}" LOGFILE="${full_db_staging_dir}":exp_full.log JOB_NAME=exp_full
+    expdp "${DB_USERNAME}"/"${DB_PASSWORD}"@"${DB_HOSTNAME}" FULL=YES DUMPFILE=cloud_dpump_dir:exp_full_%U.dmp \
+    FILESIZE=4G PARALLEL="${PARALLEL_PROCESSES}" LOGFILE=cloud_dpump_dir:exp_full.log JOB_NAME=exp_full
 
     # Upload dmp files in parallel
-    ls | grep -E '\.dmp$' | parallel -j "${PARALLEL_PROCESSES}" cp_to_cloud "$full_db_staging_dir" {}
+    ls $DB_STAGING_DIR | grep -E '\.dmp$' | parallel -j "${PARALLEL_PROCESSES}" cp_to_cloud "$DB_STAGING_DIR" {}
+
+    if [ ! -z "${DB_STAGING_DIR}" ]
+    then
+        rm -r ${DB_STAGING_DIR}/*
+    fi
 }
 
 function perform_postgres_table_backup() {
@@ -61,24 +71,29 @@ function perform_backups() {
 	#### START THE BACKUPS ####
 	###########################
 
-	suffix="${DB_TODAY}/"
-	full_db_staging_dir="${DB_STAGING_DIR}${suffix}"
-
-	echo "Making backup directory in $full_db_staging_dir"
-
-	if ! mkdir -p "$full_db_staging_dir"; then
-		echo "Cannot create backup directory in $full_db_staging_dir. Go and fix it!" 1>&2
-		exit 1;
-	fi;
-
 	if [ "${DB_TYPE}" = "oracle" ]; then
 
 		echo -e "${GREEN}${BOLD}\n\nPerforming full backups"
 		echo -e "--------------------------------------------\n${NORMAL}${NO_COLOR}"
 
-		perform_full_oracle_backup "$full_db_staging_dir"
+		perform_full_oracle_backup
+
+        if [ ! -z "${DB_STAGING_DIR}" ]
+        then
+            rm -r ${DB_STAGING_DIR}/*
+        fi
 		
 	elif [ "${DB_TYPE}" = "postgres" ]; then
+
+        suffix="${DB_TODAY}/"
+        full_db_staging_dir="${DB_STAGING_DIR}${suffix}"
+
+        echo "Making backup directory in $full_db_staging_dir"
+
+        if ! mkdir -p "$full_db_staging_dir"; then
+            echo "Cannot create backup directory in $full_db_staging_dir. Go and fix it!" 1>&2
+            exit 1;
+        fi;
 	
 		#######################
 		### GLOBALS BACKUPS ###
@@ -117,7 +132,11 @@ function perform_backups() {
         # Backup using GNU Parallel
         printf '%s\n' "$databases" | parallel -j "${PARALLEL_PROCESSES}" perform_postgres_table_backup "$full_db_staging_dir" {} {%}
 
-	fi
+        if [ ! -z "${full_db_staging_dir}" ]
+        then
+            rm -r ${full_db_staging_dir}/*
+        fi
+    fi
 
 	echo -e "${GREEN}${BOLD}\n${CELEBRATE} All database backups complete!${NORMAL}${NO_COLOR}"
 }
