@@ -4,7 +4,9 @@ export SHELL=$(type -p bash)
 function perform_full_oracle_backup() {
 
     # Create the appropriate directory in Oracle
-    sqlplus "${DB_USERNAME}"/"${DB_PASSWORD}"@"${DB_HOSTNAME}" <<EOF
+    # See https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Appendix.Oracle.CommonDBATasks.Misc.html
+    # for how to create a directory in RDS Oracle
+    sqlplus "${DB_USERNAME}"/"${DB_PASSWORD}"@"${DB_HOSTNAME}/${DB_ORACLE_SERVICE_NAME}" <<EOF
 CREATE or REPLACE DIRECTORY cloud_dpump_dir as '${DB_STAGING_DIR}';
 GRANT READ, WRITE ON DIRECTORY cloud_dpump_dir TO ${DB_USERNAME};
 EOF
@@ -13,10 +15,14 @@ EOF
     # See:
     # https://docs.oracle.com/database/121/SUTIL/GUID-1E134053-692A-4386-BB77-153CB4A6071A.htm#SUTIL887
     # https://stackoverflow.com/questions/16415120/exp-command-accepts-host-and-port-to-export-remote-db-tables
-    expdp "${DB_USERNAME}"/"${DB_PASSWORD}"@"${DB_HOSTNAME}" FULL=YES DUMPFILE=cloud_dpump_dir:exp_full_%U.dmp \
-    FILESIZE=4G PARALLEL="${PARALLEL_PROCESSES}" LOGFILE=cloud_dpump_dir:exp_full.log JOB_NAME=exp_full
+    # https://aws.amazon.com/premiumsupport/knowledge-center/rds-oracle-instant-client-datapump/
+    expdp "${DB_USERNAME}"/"${DB_PASSWORD}"@"${DB_HOSTNAME}/${DB_ORACLE_SERVICE_NAME}" FULL=YES \
+    DUMPFILE=cloud_dpump_dir:exp_full_%U.dmp FILESIZE=4G PARALLEL="${PARALLEL_PROCESSES}" \
+    LOGFILE=cloud_dpump_dir:exp_full.log JOB_NAME=exp_full
+    # REUSE_DUMPFILES=YES
 
     # Upload dmp files in parallel
+    # TODO: execute this remotely if on a different host
     ls $DB_STAGING_DIR | grep -E '\.dmp$' | parallel -j "${PARALLEL_PROCESSES}" cp_to_cloud "$DB_STAGING_DIR" {}
 
     if [ ! -z "${DB_STAGING_DIR}" ]

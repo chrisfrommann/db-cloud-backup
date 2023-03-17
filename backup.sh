@@ -96,6 +96,11 @@ else
 	exit 1;
 fi
 
+if [ "${DB_CLOUD_BACKUP_BACKEND}" != "aws" ] && [ "${DB_CLOUD_BACKUP_BACKEND}" != "azure" ]; then
+    echo -e "${RED}Invalid cloud storage backend${NO_COLOR}" 1>&2
+    exit 1
+fi
+
 if [[ ${DB_DAY_OF_WEEK_TO_KEEP} > ${DB_DAYS_TO_KEEP} ]]; then
 	echo -e "${RED}DB_DAY_OF_WEEK_TO_KEEP > DB_DAYS_TO_KEEP, which means you'll have 
 	already deleted the backup you want to retain${NO_COLOR}" 1>&2

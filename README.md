@@ -3,12 +3,13 @@
 This script creates a backup of a local database to a cloud backend. It assumes:
 1. Your DB is not in the cloud (otherwise just use e.g. RDS with automatic backups)
 2. Your destination bucket already exists and you have permissions to write to it
-3. You are either running this script on the DB server or have access to the filesystem
+3. You are either running this script on the DB server or can SSH to that machine
 
 ## Dependencies
 Ensure you have the following installed
 1. GNU parallel
-2. S3 command line tools on the path
+2. AWS command line tools and/or (to install on macOS `brew install awscli`)
+3. Azure command line tools (to install on macOS: `brew install azure-cli`)
 
 **For Oracle:**
 

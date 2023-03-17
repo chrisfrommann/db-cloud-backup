@@ -16,6 +16,13 @@ DB_HOSTNAME=
 # Optional DB_USERNAME to connect to database as.  Will default to "postgres" if none specified.
 DB_USERNAME=
 
+# Optional DB_PASSWORD to connect to the database.  Will search in .pgpass or in environment variables
+# if empty. *DO NOT COMMMIT THIS PASSWORD TO VERSION CONTROL*
+DB_PASSWORD=
+
+# Service name (only applicable to Oracle)
+DB_ORACLE_SERVICE_NAME=
+
 # This dir will be created if it doesn't exist.  This must be writable by the user the script is
 # running as. Include a trailing slash.
 DB_STAGING_DIR=/home/backups/database-backup/
@@ -50,5 +57,11 @@ DB_WEEKS_TO_KEEP=4
 # Choice of cloud backend (aws=AWS S3 or azure=Azure Blob Storage)
 DB_CLOUD_BACKUP_BACKEND=aws
 
-# S3 or blob storage root path for backups (include trailing slash)
+# S3 full path or Azure directory name for backups (include trailing slash)
 DB_CLOUD_BACKUP_PATH=s3://bucket/prefix/
+
+# Azure container name
+DB_AZURE_CONTAINER=
+
+# Azure account name
+DB_AZURE_ACCOUNT=

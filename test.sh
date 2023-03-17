@@ -2,7 +2,7 @@
 
 . "$(dirname "$0")/backup.sh"
 
-DB_TODAY=2023-02-01
+DB_TODAY=2023-02-09
 while [ "$DB_TODAY" != $(date +\%Y-\%m-\%d) ]; do 
     if [ "$(uname)" == "Darwin" ]; then
         # macOS/BSD uses a different date format
